@@ -157,26 +157,26 @@ class LoopObserver:
         if not self.verbose:
             return
 
-        event_type = (event.get("event_type") or "").lower()
+        # Strands streams one-shot `message` events: assistant/toolUse is the
+        # agent acting, user/toolResult is the observation, start_event_loop
+        # marks each think. (Older event_type keys are no longer emitted.)
+        if "start_event_loop" in event:
+            print("\n  🧠 THINK  (reasoning over context...)")
 
-        # Model decided to call a tool
-        if "tool_use" in event_type and "start" in event_type:
-            self._step += 1
-            name = event.get("tool_name", "?")
-            inp = event.get("tool_input", {})
-            self.tool_calls.append({"tool": name, "input": inp})
-            print(f"\n  🔧 [Step {self._step}] ACT → {name}(", end="")
-            parts = [f"{k}={repr(v)}" for k, v in inp.items()]
-            print(", ".join(parts) + ")")
-
-        # Tool returned its result
-        elif "tool_use" in event_type and ("end" in event_type or "result" in event_type):
-            name = event.get("tool_name", "?")
-            print(f"  ✓  OBSERVE ← {name} returned (added to context)")
-
-        # Model is reasoning
-        elif event_type in ("on_llm_start", "before_model_call"):
-            print(f"\n  🧠 THINK  (reasoning over context...)")
+        msg = event.get("message")
+        if not isinstance(msg, dict):
+            return
+        for block in msg.get("content", []):
+            if "toolUse" in block:
+                tu = block["toolUse"]
+                self._step += 1
+                name = tu.get("name", "?")
+                inp = tu.get("input", {})
+                self.tool_calls.append({"tool": name, "input": inp})
+                parts = ", ".join(f"{k}={v!r}" for k, v in inp.items()) if isinstance(inp, dict) else ""
+                print(f"\n  🔧 [Step {self._step}] ACT → {name}({parts})")
+            elif "toolResult" in block:
+                print("  ✓  OBSERVE ← tool returned (added to context)")
 
 
 # ---------------------------------------------------------------------------
